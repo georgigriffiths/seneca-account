@@ -10,7 +10,7 @@ var assert  = require('chai').assert
 
 var gex     = require('gex')
 var async   = require('async')
-var _       = require('underscore')
+var _       = require('lodash')
 
 
 
@@ -30,16 +30,14 @@ function cberr(win){
 
 
 var si = seneca()
+si.use( 'basic' )
+si.use( 'entity' )
 si.use( 'user' )
 si.use( 'auth' )
 si.use( '..' )
 
-var accpin  = si.pin({role:'account',cmd:'*'})
-var userpin = si.pin({role:'user',cmd:'*'})
-
 var accountent = si.make$('sys','account')
 var userent    = si.make$('sys','user')
-
 
 describe('user', function() {
   
@@ -47,9 +45,9 @@ describe('user', function() {
     var tmp = {}
 
     si.ready( function(){
-
+      return {
       auto_create_account: function(cb){
-        userpin.register({name:'N1',nick:'n1'},cberr(function(out){
+        si.act('role:account, cmd:register',{name:'N1',nick:'n1'},cberr(function(out){
           assert.equal( 1, out.user.accounts.length )
           accpin.load_accounts({user:out.user},cberr(function(res){
             tmp.ac1 = res.accounts[0]
@@ -67,7 +65,7 @@ describe('user', function() {
 
 
       existing_account: function(cb){
-        userpin.register({name:'N2',nick:'n2',account:tmp.ac1.id},cberr(function(out){
+        si.act('role:user, cmd:register',{name:'N2',nick:'n2',account:tmp.ac1.id},cberr(function(out){
           assert.equal( 1, out.user.accounts.length )
           assert.equal( tmp.ac1.id, out.user.accounts[0] )
           cb()
@@ -76,7 +74,7 @@ describe('user', function() {
 
 
       primary_account: function(cb){
-        userpin.register({name:'N3',nick:'n3',accounts:[tmp.ac1.id]},cberr(function(out){
+        si.act('role:user, cmd:register',{name:'N3',nick:'n3',accounts:[tmp.ac1.id]},cberr(function(out){
           assert.equal( 1, out.user.accounts.length )
           assert.equal( tmp.ac1.id, out.user.accounts[0] )
           cb()
@@ -84,14 +82,14 @@ describe('user', function() {
       },
 
       user_login: function(cb){
-        userpin.login({nick:'n1',auto:true},cberr(function(out){
+        si.act('role:user, cmd:login',{nick:'n1',auto:true},cberr(function(out){
           var user = out.user
           assert.equal( 1, user.accounts.length )
           assert.equal( tmp.ac1.id, user.accounts[0] )
           cb()
         }))
       },
-
+    }
     })
   })
 
@@ -102,7 +100,7 @@ describe('user', function() {
     }))
 
     accountent.make$({n:'la1'}).save$(cberr(function(acc){
-      userpin.register({name:'LA1',nick:'la1',accounts:[acc.id,'not-an-acc-id']},cberr(function(out){
+      si.act('role:account, cmd:register',{name:'LA1',nick:'la1',accounts:[acc.id,'not-an-acc-id']},cberr(function(out){
         accpin.load_accounts({user:out.user},cberr(function(res){
           assert.equal( 1, res.accounts.length )
           assert.equal( acc.id, res.accounts[0].id )

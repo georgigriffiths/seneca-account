@@ -2,7 +2,7 @@
 "use strict";
 
 
-var _     = require('underscore')
+var _     = require('lodash')
 var async = require('async')
 
 
@@ -79,7 +79,7 @@ module.exports = function( options ) {
   seneca.add( {role:'user', cmd:'register' }, user_register )
 
   if( options.web ) {
-    seneca.add( {role:'auth', cmd:'instance' }, auth_instance )
+    seneca.add( {role:'auth', cmd:'user' }, auth_user )
   }
 
 
@@ -210,7 +210,6 @@ module.exports = function( options ) {
     var user   = args.user
     var account = args.account
     var accountent = seneca.make$( 'sys/account' )
-    var pin = seneca.pin({ role:plugin, cmd:'*' })
 
 
     // account was passed in from context
@@ -235,8 +234,8 @@ module.exports = function( options ) {
 
     // auto create account
     var accname = !_.isEmpty(options.autoNameSuffix) ? user.name + options.autoNameSuffix : ''
-    return pin.create(
-      {name:accname,orignick:user.nick,origuser:user.id}, 
+    return seneca.act(
+      {role:plugin,cmd:'create',name:accname,orignick:user.nick,origuser:user.id}, 
       function( err, out ) {
         account_result.call( this, done, ['resolve','auto-create',user] ).call(this,err,out.account)
       })
@@ -332,9 +331,11 @@ module.exports = function( options ) {
   // args saved as account fields
   // provides: {account:sys/account}
   function update_account( args, done ) {
-    var acc = args.account
 
-    var fields = seneca.util.argprops({}, args, {}, 'role, cmd, user, account')
+    var data = buildcontext( args.args )
+    var acc = data.account
+
+    var fields = seneca.util.argprops({}, data.body, {}, 'role, cmd, user, account')
     acc.data$( fields )
 
     this.log.debug('update',acc)
@@ -358,7 +359,6 @@ module.exports = function( options ) {
 
   // override seneca-user, user register action
   function user_register( args, done ) {
-    var pin = this.pin({ role:plugin, cmd:'*' })
 
     this.prior( args, function( err, out ) {
       if( err ) return done( err );
@@ -367,7 +367,7 @@ module.exports = function( options ) {
       var resargs = {user:out.user}
       if( args.account ) resargs.account = args.account;
 
-      pin.resolve(resargs, function( err, result ){
+      this.act({ role:plugin, cmd:'resolve' }, resargs, function( err, result ){
         if( err ) return done( err );
         var account = result.account
 
@@ -385,8 +385,8 @@ module.exports = function( options ) {
   }
   
 
-  // override seneca-auth, instance action
-  function auth_instance( args, done ) {
+  // override seneca-auth, user action
+  function auth_user( args, done ) {
     this.prior( args, function( err, out ) {
       load_accounts_for_user( this, args.user, function( err, accounts ){
         if(err) return done(err);
@@ -417,41 +417,38 @@ module.exports = function( options ) {
     })
   }
 
-
-  function buildcontext( req, res, args, act, respond ) {
-    var user = req.seneca && req.seneca.user
-    if( user ) {
-      args.user = user
-    }
-
+  function buildcontext( args ) {
+    var user = args.user.user
+    args.user = user
+    
     if( void 0 == args.account ) {
       if( user && user.accounts && 0 < user.accounts.length) {
         args.account = user.accounts[0]
       }
     }
 
-    act(args,respond)
+    return args
   }
-
-
-
-  // web interface
-  seneca.act_if(options.web, {role:'web', use:{
-    prefix:options.prefix,
-    pin:{role:plugin,cmd:'*'},
-    map:{
-      update: { POST:buildcontext }
-    }
-  }})
-
-
-
-
   // define sys/account entity
   seneca.add({init:plugin}, function( args, done ){
     var seneca = this
     var accountent = seneca.make$( 'sys/account' )
     seneca.act('role:util, cmd:define_sys_entity', {list:[accountent.canon$()]})
+
+    // web interface
+    if (options.web) {
+      seneca.act({
+        role:'web', 
+        routes:{
+          prefix:options.prefix,
+          pin:"role:plugin,cmd:*",
+          map:{
+            update: { POST:true }
+          }
+        }
+      })
+    }
+
     done()
   })
 
