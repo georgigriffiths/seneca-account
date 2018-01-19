@@ -417,18 +417,20 @@ module.exports = function( options ) {
     })
   }
 
-  function buildcontext( args ) {
-    var user = args.user.user
-    args.user = user
-    
-    if( void 0 == args.account ) {
-      if( user && user.accounts && 0 < user.accounts.length) {
-        args.account = user.accounts[0]
-      }
-    }
-
-    return args
-  }
+  function buildcontext( req, res, args, act, respond ) { 
+    var user = req.seneca && req.seneca.user 
+    if( user ) { 
+      args.user = user 
+    } 
+     
+    if( void 0 == args.account ) { 
+      if( user && user.accounts && 0 < user.accounts.length) { 
+        args.account = user.accounts[0] 
+      } 
+    } 
+ 
+    act(args,respond)
+  } 
   // define sys/account entity
   seneca.add({init:plugin}, function( args, done ){
     var seneca = this
@@ -437,16 +439,13 @@ module.exports = function( options ) {
 
     // web interface
     if (options.web) {
-      seneca.act({
-        role:'web', 
-        routes:{
-          prefix:options.prefix,
-          pin:"role:plugin,cmd:*",
-          map:{
-            update: { POST:true }
-          }
-        }
-      })
+      seneca.act({role:'web', use:{ 
+        prefix:options.prefix, 
+        pin:{role:plugin,cmd:'*'}, 
+        map:{ 
+          update: { POST:buildcontext } 
+        } 
+      }})
     }
 
     done()
